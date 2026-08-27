@@ -1,0 +1,32 @@
+# herdr-web — 最简单的 CNB 流水线：main 分支 push 时只做两件事
+#   1. docker:cache 内置任务：构建依赖缓存镜像（cache）
+#   2. 用缓存构建正式镜像并推送到 CNB 制品库的 latest 标签
+main:
+  push:
+    - name: build and push
+      services:
+        - docker
+      stages:
+        # 先构建依赖层缓存镜像（跨节点复用，避免重复下载依赖）
+        - name: build cache
+          type: docker:cache
+          options:
+            dockerfile: cache.dockerfile
+            by:
+              - package.json
+              - bun.lock
+              - bunfig.toml
+            versionBy:
+              - bun.lock
+            sync: true
+          exports:
+            name: CACHE_IMAGE
+
+        # 再用缓存镜像构建正式镜像并推送 latest
+        - name: push latest
+          script: |
+            docker build \
+              --cache-from ${CACHE_IMAGE} \
+              -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:latest \
+              .
+            docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:latest
